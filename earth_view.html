@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>구 지구 3D 시뮬레이션</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #toggleButton {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 100;
+        }
+        #toggleButton:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <button id="toggleButton">시선 보임</button>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // 씬, 카메라, 렌더러 설정
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 지구 생성
+        const earthRadius = 5;
+        const earthGeometry = new THREE.SphereGeometry(earthRadius, 32, 32);
+        const earthMaterial = new THREE.MeshPhongMaterial({
+            color: 0x1a75ff,
+            specular: 0x111111,
+            shininess: 30
+        });
+        const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+        scene.add(earth);
+
+        // 육지 생성 (더 크게)
+        const landGeometry = new THREE.SphereGeometry(earthRadius - 0.1, 32, 32);
+        const landMaterial = new THREE.MeshPhongMaterial({
+            color: 0x4CAF50,
+            specular: 0x111111,
+            shininess: 30
+        });
+        const land = new THREE.Mesh(landGeometry, landMaterial);
+        scene.add(land);
+
+        // 관찰자 위치 (갈색)
+        const observerHeight = 0.03;
+        const observerGeometry = new THREE.ConeGeometry(0.1, 0.15, 8);
+        const observerMaterial = new THREE.MeshBasicMaterial({ color: 0x8B4513 }); // 갈색
+        const observer = new THREE.Mesh(observerGeometry, observerMaterial);
+        const observerPosition = new THREE.Vector3(0, earthRadius + observerHeight, 0);
+        observer.position.copy(observerPosition);
+        observer.rotation.x = 0;
+        observer.rotation.z = 0;
+        scene.add(observer);
+
+        // 첫 번째 섬 (녹색)
+        const greenIslandAngle = Math.PI / 2 - Math.PI / 6; // 60도
+        const greenIslandHeight = 0.06;
+        const greenIslandGeometry = new THREE.ConeGeometry(0.15, 0.4, 8);
+        const greenIslandMaterial = new THREE.MeshBasicMaterial({ color: 0x4CAF50 }); // 녹색
+        const greenIsland = new THREE.Mesh(greenIslandGeometry, greenIslandMaterial);
+        const greenIslandPosition = new THREE.Vector3(
+            earthRadius * Math.cos(greenIslandAngle),
+            earthRadius * Math.sin(greenIslandAngle) + greenIslandHeight,
+            0
+        );
+        greenIsland.position.copy(greenIslandPosition);
+        greenIsland.rotation.x = 0;
+        greenIsland.rotation.z = -greenIslandAngle;
+        scene.add(greenIsland);
+
+        // 두 번째 섬 (주황색)
+        const orangeIslandAngle = Math.PI / 2 + Math.PI / 8; // 112.5도
+        const orangeIslandHeight = 0.07;
+        const orangeIslandGeometry = new THREE.ConeGeometry(0.15, 0.4, 8);
+        const orangeIslandMaterial = new THREE.MeshBasicMaterial({ color: 0xFFA500 }); // 주황색
+        const orangeIsland = new THREE.Mesh(orangeIslandGeometry, orangeIslandMaterial);
+        const orangeIslandPosition = new THREE.Vector3(
+            earthRadius * Math.cos(orangeIslandAngle),
+            earthRadius * Math.sin(orangeIslandAngle) + orangeIslandHeight,
+            0
+        );
+        orangeIsland.position.copy(orangeIslandPosition);
+        orangeIsland.rotation.x = Math.PI / 2; // 원뿔을 눕히기 위해 x축으로 90도 회전
+        orangeIsland.rotation.z = -orangeIslandAngle; // 지구 표면에 평행하게 회전
+        scene.add(orangeIsland);
+
+        // 녹색섬에서 갈색섬으로의 시선
+        const greenToBrownSightLineGeometry = new THREE.BufferGeometry();
+        const greenToBrownSightLineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0xFF0000, // 빨간색
+            transparent: true,
+            opacity: 0.9,
+            linewidth: 4
+        });
+
+        const greenToBrownSightLinePoints = [];
+        const greenIslandTop = new THREE.Vector3().copy(greenIslandPosition);
+        const greenNormalVector = new THREE.Vector3().copy(greenIslandPosition).normalize();
+        greenIslandTop.addScaledVector(greenNormalVector, 0.2); // 녹색 섬 원뿔의 높이만큼 올림
+        greenToBrownSightLinePoints.push(greenIslandTop);
+
+        const brownIslandTop2 = new THREE.Vector3().copy(observerPosition);
+        brownIslandTop2.y += 0.15; // 갈색 섬 꼭대기보다 위로 설정
+        
+        // 지구 중심 반대 방향으로 살짝 올리도록 조정
+        const earthCenter = new THREE.Vector3(0, 0, 0);
+        const directionToCenter = new THREE.Vector3().subVectors(earthCenter, greenIslandTop).normalize();
+        brownIslandTop2.addScaledVector(directionToCenter, 0.04); // 지구 중심 반대 방향으로 0.05만큼 올림
+        
+        greenToBrownSightLinePoints.push(brownIslandTop2);
+
+        // 갈색 섬 위쪽으로 더 연장
+        const extendedPoint2 = new THREE.Vector3().copy(brownIslandTop2);
+        const direction2 = new THREE.Vector3().subVectors(brownIslandTop2, greenIslandTop).normalize();
+        extendedPoint2.addScaledVector(direction2, 0.1); // 방향 벡터를 연장
+        greenToBrownSightLinePoints.push(extendedPoint2);
+
+        greenToBrownSightLineGeometry.setFromPoints(greenToBrownSightLinePoints);
+        const greenToBrownSightLine = new THREE.Line(greenToBrownSightLineGeometry, greenToBrownSightLineMaterial);
+        greenToBrownSightLine.visible = false; // 기본적으로 보이지 않도록 설정
+        scene.add(greenToBrownSightLine);
+
+        // 갈색섬에서 주황색섬으로의 시선
+        const brownToOrangeSightLineGeometry = new THREE.BufferGeometry();
+        const brownToOrangeSightLineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0xFFFF00, // 노란색
+            transparent: true,
+            opacity: 0.9,
+            linewidth: 4
+        });
+
+        const brownToOrangeSightLinePoints = [];
+        const brownIslandTop = new THREE.Vector3().copy(observerPosition);
+        brownIslandTop.y += 0.075; // 갈색 섬 꼭대기 높이
+        brownToOrangeSightLinePoints.push(brownIslandTop);
+
+        const orangeIslandTop = new THREE.Vector3().copy(orangeIslandPosition);
+        const orangeNormalVector = new THREE.Vector3().copy(orangeIslandPosition).normalize();
+        orangeIslandTop.addScaledVector(orangeNormalVector, 0.2); // 주황색 섬 원뿔의 높이만큼만 올림
+        brownToOrangeSightLinePoints.push(orangeIslandTop);
+
+        // 주황색 섬 방향으로 더 연장
+        const extendedPoint = new THREE.Vector3().copy(orangeIslandTop);
+        const direction = new THREE.Vector3().subVectors(orangeIslandTop, brownIslandTop).normalize();
+        extendedPoint.addScaledVector(direction, 0.1); // 방향 벡터를 2배 연장
+        brownToOrangeSightLinePoints.push(extendedPoint);
+
+        brownToOrangeSightLineGeometry.setFromPoints(brownToOrangeSightLinePoints);
+        const brownToOrangeSightLine = new THREE.Line(brownToOrangeSightLineGeometry, brownToOrangeSightLineMaterial);
+        brownToOrangeSightLine.visible = false; // 기본적으로 보이지 않도록 설정
+        scene.add(brownToOrangeSightLine);
+
+        // 조명 추가
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // 카메라 위치 설정 (상단에서 보기)
+        camera.position.set(0, 15, 15);
+        
+        // 갈색 섬과 지구 중심의 중간 지점 계산
+        const focusPoint = new THREE.Vector3();
+        focusPoint.addVectors(observerPosition, new THREE.Vector3(0, 0, 0)).multiplyScalar(0.5);
+        camera.lookAt(focusPoint);
+
+        // 마우스 컨트롤 추가
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.copy(focusPoint); // 중간 지점을 중심으로 회전
+        controls.minPolarAngle = 0;
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.minDistance = 5;
+        controls.maxDistance = 30;
+        controls.enablePan = false;
+        controls.rotateSpeed = 0.5;
+        controls.zoomSpeed = 0.5;
+
+        // 윈도우 리사이즈 처리
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 애니메이션 루프
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 시선 토글 버튼 기능 추가
+        const toggleButton = document.getElementById('toggleButton');
+        let isVisible = false; // 초기 상태를 false로 설정
+
+        toggleButton.addEventListener('click', () => {
+            isVisible = !isVisible;
+            greenToBrownSightLine.visible = isVisible;
+            brownToOrangeSightLine.visible = isVisible;
+            toggleButton.textContent = isVisible ? '시선 감춤' : '시선 보임';
+        });
+    </script>
+</body>
+</html> 
